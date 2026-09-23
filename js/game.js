@@ -405,19 +405,34 @@ export class Game {
     this.state = STATES.FIRING;
 
     const startPos = tank.muzzleWorldPosition;
-    const velocity = tank.getFireVelocity();
+    this.activeProjectiles = [];
 
-    const projectile = new Projectile(
-      this.scene,
-      startPos,
-      velocity,
-      weapon,
-      this.wind,
-      this.terrain,
-      this.tanks
-    );
-    this.activeProjectiles = [projectile];
-    this.cameraCtrl.startFollow(projectile);
+    if (weapon.elevationOffsets) {
+      const baseElevation = tank.barrelElevation;
+      for (const offsetDeg of weapon.elevationOffsets) {
+        const el = baseElevation + degToRad(offsetDeg);
+        const speed = (tank.power / 100) * 60;
+        const velocity = new THREE.Vector3(
+          speed * Math.cos(el) * Math.sin(tank.turretAngle),
+          speed * Math.sin(el),
+          speed * Math.cos(el) * Math.cos(tank.turretAngle)
+        );
+        const proj = new Projectile(
+          this.scene, startPos.clone(), velocity, weapon,
+          this.wind, this.terrain, this.tanks
+        );
+        this.activeProjectiles.push(proj);
+      }
+    } else {
+      const velocity = tank.getFireVelocity();
+      const proj = new Projectile(
+        this.scene, startPos, velocity, weapon,
+        this.wind, this.terrain, this.tanks
+      );
+      this.activeProjectiles.push(proj);
+    }
+
+    this.cameraCtrl.startFollow(this.activeProjectiles[0]);
   }
 
   handleImpact(result) {
