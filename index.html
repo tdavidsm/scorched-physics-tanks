@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TankyTankTanks</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <canvas id="sideViewCanvas"></canvas>
+
+  <div id="startScreen" class="screen">
+    <h1>TankyTankTanks</h1>
+    <p class="subtitle">A Physics Projectile Duel</p>
+    <div class="start-options">
+      <button id="btnStart">Start Game</button>
+    </div>
+    <div class="controls-info">
+      <h3>Controls</h3>
+      <div class="controls-grid">
+        <span class="key">A / D</span><span>Rotate turret</span>
+        <span class="key">W / S</span><span>Adjust barrel angle</span>
+        <span class="key">Q / E</span><span>Adjust power</span>
+        <span class="key">Tab</span><span>Cycle weapons</span>
+        <span class="key">Space</span><span>Side view (trajectory preview)</span>
+        <span class="key">Enter</span><span>Fire!</span>
+        <span class="key">← →</span><span>Drive tank (limited fuel)</span>
+        <span class="key">Mouse</span><span>Orbit camera</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="gameOverScreen" class="screen hidden">
+    <h1 id="winnerText"></h1>
+    <p id="winnerSubtext"></p>
+    <button id="btnRestart">Play Again</button>
+  </div>
+
+  <div id="hud" class="hidden">
+    <div id="turnBanner" class="hidden">
+      <span id="turnText"></span>
+    </div>
+
+    <div id="topBar">
+      <div id="p1Info" class="player-info">
+        <span class="player-name" style="color: #4fc3f7">Player 1</span>
+        <div class="health-bar"><div id="p1Health" class="health-fill p1"></div></div>
+        <span id="p1HealthText" class="health-text">100</span>
+      </div>
+      <div id="windIndicator">
+        <div class="wind-label">WIND</div>
+        <canvas id="windCanvas" width="100" height="50"></canvas>
+        <div id="windSpeed"></div>
+      </div>
+      <div id="p2Info" class="player-info">
+        <span class="player-name" style="color: #ef5350">Player 2</span>
+        <div class="health-bar"><div id="p2Health" class="health-fill p2"></div></div>
+        <span id="p2HealthText" class="health-text">100</span>
+      </div>
+    </div>
+
+    <div id="bottomBar">
+      <div id="aimInfo">
+        <div class="aim-row">
+          <label>Angle</label>
+          <div class="aim-value" id="angleDisplay">45°</div>
+        </div>
+        <div class="aim-row">
+          <label>Power</label>
+          <div class="power-bar-container">
+            <div id="powerBar" class="power-bar-fill"></div>
+          </div>
+          <div class="aim-value" id="powerDisplay">50</div>
+        </div>
+        <div class="aim-row">
+          <label>Turret</label>
+          <div class="aim-value" id="turretDisplay">0°</div>
+        </div>
+      </div>
+
+      <div id="weaponSelector">
+        <div class="weapon-label">WEAPON</div>
+        <div id="weaponName" class="weapon-name">Baby Missile</div>
+        <div id="weaponAmmo" class="weapon-ammo">∞</div>
+        <div class="weapon-hint">TAB to cycle</div>
+      </div>
+
+      <div id="fuelInfo">
+        <label>FUEL</label>
+        <div class="fuel-bar-container">
+          <div id="fuelBar" class="fuel-bar-fill"></div>
+        </div>
+      </div>
+
+      <div id="sideViewInfo">
+        <button id="btnSideView" class="side-view-btn">
+          SIDE VIEW<br><span class="key-hint">SPACE</span>
+        </button>
+        <div id="sideViewTimer" class="hidden">
+          <div id="sideViewTimeBar" class="side-view-time-fill"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
