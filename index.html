@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TankyTankTanks</title>
-  <link rel="stylesheet" href="css/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Scorched Physics Tanks</title>
+  <link rel="stylesheet" href="css/style.css?v=3">
   <script type="importmap">
   {
     "imports": {
@@ -19,22 +21,17 @@
   <canvas id="sideViewCanvas"></canvas>
 
   <div id="startScreen" class="screen">
-    <h1>TankyTankTanks</h1>
+    <h1>Scorched Physics Tanks</h1>
     <p class="subtitle">A Physics Projectile Duel</p>
     <div class="start-options">
       <button id="btnStart">Start Game</button>
     </div>
     <div class="controls-info">
-      <h3>Controls</h3>
-      <div class="controls-grid">
-        <span class="key">A / D</span><span>Rotate turret</span>
-        <span class="key">W / S</span><span>Adjust barrel angle</span>
-        <span class="key">Q / E</span><span>Adjust power</span>
-        <span class="key">Tab</span><span>Cycle weapons</span>
-        <span class="key">Space</span><span>Side view (trajectory preview)</span>
-        <span class="key">Enter</span><span>Fire!</span>
-        <span class="key">← →</span><span>Drive tank (limited fuel)</span>
-        <span class="key">Mouse</span><span>Orbit camera</span>
+      <h3>How to Play</h3>
+      <div class="controls-list">
+        <p>Use the on-screen controls to aim your turret, set power, and fire at your opponent.</p>
+        <p>Cycle weapons, preview your trajectory, and drive your tank into better positions.</p>
+        <p>Drag the background to orbit the camera. Pinch to zoom.</p>
       </div>
     </div>
   </div>
@@ -52,7 +49,7 @@
 
     <div id="topBar">
       <div id="p1Info" class="player-info">
-        <span class="player-name" style="color: #4fc3f7">Player 1</span>
+        <span class="player-name" style="color: #4fc3f7">P1</span>
         <div class="health-bar"><div id="p1Health" class="health-fill p1"></div></div>
         <span id="p1HealthText" class="health-text">100</span>
       </div>
@@ -62,49 +59,78 @@
         <div id="windSpeed"></div>
       </div>
       <div id="p2Info" class="player-info">
-        <span class="player-name" style="color: #ef5350">Player 2</span>
+        <span class="player-name" style="color: #ef5350">P2</span>
         <div class="health-bar"><div id="p2Health" class="health-fill p2"></div></div>
         <span id="p2HealthText" class="health-text">100</span>
       </div>
     </div>
 
-    <div id="bottomBar">
-      <div id="aimInfo">
-        <div class="aim-row">
-          <label>Angle</label>
-          <div class="aim-value" id="angleDisplay">45°</div>
+    <div id="touchControls">
+      <!-- Left side: Aim controls -->
+      <div id="leftControls">
+        <div id="aimPad">
+          <button class="aim-btn" data-key="KeyW" id="btnUp">&#9650;</button>
+          <div class="aim-mid-row">
+            <button class="aim-btn" data-key="KeyA" id="btnLeft">&#9664;</button>
+            <div class="aim-center-label">AIM</div>
+            <button class="aim-btn" data-key="KeyD" id="btnRight">&#9654;</button>
+          </div>
+          <button class="aim-btn" data-key="KeyS" id="btnDown">&#9660;</button>
         </div>
-        <div class="aim-row">
-          <label>Power</label>
+        <div id="joystickArea">
+          <div id="joystickBase">
+            <div id="joystickKnob"></div>
+          </div>
+          <div class="joystick-label">DRIVE</div>
+          <div id="fuelInfo">
+            <label>FUEL</label>
+            <div class="fuel-bar-container">
+              <div id="fuelBar" class="fuel-bar-fill"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center: Info displays -->
+      <div id="centerControls">
+        <div id="aimInfo">
+          <div class="aim-row">
+            <label>Elev</label>
+            <div class="aim-value" id="angleDisplay">45.0°</div>
+          </div>
+          <div class="aim-row">
+            <label>Power</label>
+            <div class="aim-value" id="powerDisplay">50</div>
+          </div>
+          <div class="aim-row">
+            <label>Turret</label>
+            <div class="aim-value" id="turretDisplay">0°</div>
+          </div>
+        </div>
+
+        <div id="powerControls">
+          <button class="power-btn" data-key="KeyQ" id="btnPowerDown">&#8722; PWR</button>
           <div class="power-bar-container">
             <div id="powerBar" class="power-bar-fill"></div>
           </div>
-          <div class="aim-value" id="powerDisplay">50</div>
-        </div>
-        <div class="aim-row">
-          <label>Turret</label>
-          <div class="aim-value" id="turretDisplay">0°</div>
+          <button class="power-btn" data-key="KeyE" id="btnPowerUp">PWR +</button>
         </div>
       </div>
 
-      <div id="weaponSelector">
-        <div class="weapon-label">WEAPON</div>
-        <div id="weaponName" class="weapon-name">Baby Missile</div>
-        <div id="weaponAmmo" class="weapon-ammo">∞</div>
-        <div class="weapon-hint">TAB to cycle</div>
-      </div>
+      <!-- Right side: Fire + Weapons -->
+      <div id="rightControls">
+        <button id="btnFire" class="fire-btn">FIRE!</button>
 
-      <div id="fuelInfo">
-        <label>FUEL</label>
-        <div class="fuel-bar-container">
-          <div id="fuelBar" class="fuel-bar-fill"></div>
+        <div id="weaponSelector">
+          <button id="btnWeaponPrev" class="weapon-cycle-btn">&#9664;</button>
+          <div class="weapon-display">
+            <div id="weaponName" class="weapon-name">Baby Missile</div>
+            <div id="weaponAmmo" class="weapon-ammo">&#8734;</div>
+          </div>
+          <button id="btnWeaponNext" class="weapon-cycle-btn">&#9654;</button>
         </div>
-      </div>
 
-      <div id="sideViewInfo">
-        <button id="btnSideView" class="side-view-btn">
-          SIDE VIEW<br><span class="key-hint">SPACE</span>
-        </button>
+        <button id="btnSideView" class="side-view-btn">SIDE VIEW</button>
         <div id="sideViewTimer" class="hidden">
           <div id="sideViewTimeBar" class="side-view-time-fill"></div>
         </div>

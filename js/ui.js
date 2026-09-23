@@ -29,7 +29,6 @@ export class UI {
 
     this.btnStart = document.getElementById('btnStart');
     this.btnRestart = document.getElementById('btnRestart');
-    this.btnSideView = document.getElementById('btnSideView');
 
     this.bannerTimeout = null;
   }
@@ -122,7 +121,6 @@ export class UI {
 
   drawWind(wind) {
     const ctx = this.windCtx;
-    const dpr = window.devicePixelRatio || 1;
     const w = this.windCanvas.width;
     const h = this.windCanvas.height;
     ctx.clearRect(0, 0, w, h);
@@ -139,7 +137,6 @@ export class UI {
     ctx.translate(cx, cy);
     ctx.rotate(-angle);
 
-    // Arrow shaft
     ctx.strokeStyle = 'rgba(255,255,255,0.7)';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -147,7 +144,6 @@ export class UI {
     ctx.lineTo(0, -len);
     ctx.stroke();
 
-    // Arrowhead
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.beginPath();
     ctx.moveTo(0, -len - 4);

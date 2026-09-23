@@ -2,7 +2,7 @@ export const WEAPONS = [
   {
     name: 'Baby Missile',
     damage: 15,
-    blastRadius: 4,
+    blastRadius: 8,
     craterDepth: 2,
     ammo: Infinity,
     color: '#fff',
@@ -12,7 +12,7 @@ export const WEAPONS = [
   {
     name: 'Missile',
     damage: 25,
-    blastRadius: 6,
+    blastRadius: 12,
     craterDepth: 3,
     ammo: 10,
     color: '#ff9800',
@@ -22,7 +22,7 @@ export const WEAPONS = [
   {
     name: 'Heavy Missile',
     damage: 40,
-    blastRadius: 9,
+    blastRadius: 16,
     craterDepth: 5,
     ammo: 5,
     color: '#f44336',
@@ -32,19 +32,19 @@ export const WEAPONS = [
   {
     name: 'MIRV',
     damage: 12,
-    blastRadius: 4,
+    blastRadius: 8,
     craterDepth: 2,
     ammo: 3,
     color: '#e040fb',
     description: 'Splits into 5 warheads at peak altitude.',
     behavior: 'mirv',
     submunitions: 5,
-    spreadRadius: 12,
+    spreadRadius: 15,
   },
   {
     name: 'Bouncer',
     damage: 20,
-    blastRadius: 5,
+    blastRadius: 10,
     craterDepth: 2.5,
     ammo: 5,
     color: '#76ff03',
@@ -56,7 +56,7 @@ export const WEAPONS = [
   {
     name: 'Roller',
     damage: 25,
-    blastRadius: 5,
+    blastRadius: 10,
     craterDepth: 3,
     ammo: 3,
     color: '#ffeb3b',
@@ -67,7 +67,7 @@ export const WEAPONS = [
   {
     name: 'Dirt Ball',
     damage: 5,
-    blastRadius: 7,
+    blastRadius: 12,
     craterDepth: -6,
     ammo: 5,
     color: '#8d6e63',
@@ -77,7 +77,7 @@ export const WEAPONS = [
   {
     name: 'Tunneler',
     damage: 30,
-    blastRadius: 3,
+    blastRadius: 6,
     craterDepth: 8,
     ammo: 2,
     color: '#00bcd4',
@@ -88,7 +88,7 @@ export const WEAPONS = [
   {
     name: 'Napalm',
     damage: 8,
-    blastRadius: 12,
+    blastRadius: 20,
     craterDepth: 1,
     ammo: 3,
     color: '#ff6f00',
@@ -100,7 +100,7 @@ export const WEAPONS = [
   {
     name: 'Nuke',
     damage: 60,
-    blastRadius: 18,
+    blastRadius: 30,
     craterDepth: 10,
     ammo: 1,
     color: '#fff',

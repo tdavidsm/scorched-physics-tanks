@@ -24,6 +24,9 @@ export class Tank {
     this.fuel = 100;
     this.maxFuel = 100;
 
+    this.fallVelocity = 0;
+    this.falling = false;
+
     this.burnDamagePerTick = 0;
     this.burnTicksRemaining = 0;
 
@@ -116,14 +119,39 @@ export class Tank {
   setPosition(x, z) {
     const y = this.terrain.getHeight(x, z);
     this.group.position.set(x, y, z);
+    this.fallVelocity = 0;
+    this.falling = false;
+    this.alignToTerrain(x, z);
+  }
 
-    // Align tank to terrain slope
+  update(dt) {
+    if (!this.alive) return;
+    const pos = this.group.position;
+    const groundY = this.terrain.getHeight(pos.x, pos.z);
+
+    if (pos.y > groundY + 0.1) {
+      this.falling = true;
+      this.fallVelocity += 9.81 * dt;
+      pos.y -= this.fallVelocity * dt;
+
+      if (pos.y <= groundY) {
+        pos.y = groundY;
+        this.fallVelocity = 0;
+        this.falling = false;
+        this.alignToTerrain(pos.x, pos.z);
+      }
+    } else if (pos.y < groundY - 0.05) {
+      pos.y = groundY;
+      this.alignToTerrain(pos.x, pos.z);
+    }
+  }
+
+  alignToTerrain(x, z) {
     const n = this.terrain.getNormal(x, z);
     const up = new THREE.Vector3(0, 1, 0);
     const q = new THREE.Quaternion().setFromUnitVectors(up, n);
-    // Only apply partial slope alignment for stability
     const identity = new THREE.Quaternion();
-    identity.slerp(q, 0.6);
+    identity.slerp(q, 0.8);
     this.group.quaternion.copy(identity);
   }
 
@@ -156,7 +184,7 @@ export class Tank {
 
   updateTurretRotation() {
     this.turretGroup.rotation.y = this.turretAngle;
-    this.barrelGroup.rotation.x = -(Math.PI / 2 - this.barrelElevation);
+    this.barrelGroup.rotation.x = Math.PI / 2 - this.barrelElevation;
   }
 
   rotateTurret(delta) {
@@ -184,6 +212,20 @@ export class Tank {
 
     const newX = this.group.position.x + dx;
     const newZ = this.group.position.z + dz;
+
+    if (!this.terrain.isOutOfBounds(newX, newZ)) {
+      this.setPosition(newX, newZ);
+      this.fuel = Math.max(0, this.fuel - cost);
+    }
+  }
+
+  moveXZ(dx, dz, magnitude) {
+    if (this.fuel <= 0) return;
+    const moveSpeed = 0.5 * magnitude;
+    const cost = 2 * magnitude;
+
+    const newX = this.group.position.x + dx * moveSpeed;
+    const newZ = this.group.position.z + dz * moveSpeed;
 
     if (!this.terrain.isOutOfBounds(newX, newZ)) {
       this.setPosition(newX, newZ);

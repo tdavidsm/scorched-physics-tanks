@@ -3,6 +3,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const ORBIT_DISTANCE = 35;
 const ORBIT_HEIGHT = 20;
+const OVERVIEW_HEIGHT = 80;
+const OVERVIEW_BACK = 80;
 
 export class CameraController {
   constructor(camera, canvas) {
@@ -49,6 +51,27 @@ export class CameraController {
     }
   }
 
+  overviewFocusOn(mapCenter, instant = false) {
+    const target = mapCenter.clone();
+    target.y = 10;
+    const camPos = new THREE.Vector3(
+      mapCenter.x,
+      OVERVIEW_HEIGHT,
+      mapCenter.z + OVERVIEW_BACK
+    );
+
+    if (instant) {
+      this.orbit.target.copy(target);
+      this.camera.position.copy(camPos);
+      this.orbit.update();
+      this._transitioning = false;
+    } else {
+      this._targetPos = target;
+      this._targetCamPos = camPos;
+      this._transitioning = true;
+    }
+  }
+
   startFollow(projectile) {
     this.mode = 'follow';
     this.followTarget = projectile;
@@ -62,12 +85,12 @@ export class CameraController {
     this.orbit.enabled = false;
   }
 
-  returnToOrbit(tankPosition, instant = false) {
+  returnToOrbit(mapCenter, instant = false) {
     this.mode = 'orbit';
     this.orbit.enabled = true;
     this.followTarget = null;
     this.impactTarget = null;
-    this.focusOn(tankPosition, instant);
+    this.overviewFocusOn(mapCenter, instant);
   }
 
   update(dt) {

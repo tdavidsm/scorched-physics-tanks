@@ -40,6 +40,8 @@ export class Game {
     this.wind = { x: 0, z: 0 };
     this.keys = {};
     this.impactTimer = 0;
+    this.napalmFlow = null;
+    this.joystick = { dx: 0, dz: 0, active: false };
 
     this.setupScene();
     this.setupInput();
@@ -106,9 +108,180 @@ export class Game {
 
     this.ui.btnStart.addEventListener('click', () => this.startGame());
     this.ui.btnRestart.addEventListener('click', () => this.startGame());
-    this.ui.btnSideView.addEventListener('click', () => {
+
+    this.setupTouchControls();
+  }
+
+  setupTouchControls() {
+    const holdButtons = document.querySelectorAll('[data-key]');
+    for (const btn of holdButtons) {
+      const key = btn.dataset.key;
+      const onDown = (e) => {
+        e.preventDefault();
+        this.keys[key] = true;
+        btn.classList.add('pressed');
+      };
+      const onUp = (e) => {
+        e.preventDefault();
+        this.keys[key] = false;
+        btn.classList.remove('pressed');
+      };
+      btn.addEventListener('touchstart', onDown, { passive: false });
+      btn.addEventListener('touchend', onUp, { passive: false });
+      btn.addEventListener('touchcancel', onUp, { passive: false });
+      btn.addEventListener('mousedown', onDown);
+      btn.addEventListener('mouseup', onUp);
+      btn.addEventListener('mouseleave', onUp);
+    }
+
+    document.getElementById('btnFire').addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (this.state === STATES.AIM) this.fire();
+    }, { passive: false });
+    document.getElementById('btnFire').addEventListener('click', () => {
+      if (this.state === STATES.AIM) this.fire();
+    });
+
+    document.getElementById('btnWeaponNext').addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (this.state === STATES.AIM) {
+        this.currentTank.cycleWeapon(1);
+        this.ui.updateWeapon(this.currentTank);
+      }
+    }, { passive: false });
+    document.getElementById('btnWeaponNext').addEventListener('click', () => {
+      if (this.state === STATES.AIM) {
+        this.currentTank.cycleWeapon(1);
+        this.ui.updateWeapon(this.currentTank);
+      }
+    });
+
+    document.getElementById('btnWeaponPrev').addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (this.state === STATES.AIM) {
+        this.currentTank.cycleWeapon(-1);
+        this.ui.updateWeapon(this.currentTank);
+      }
+    }, { passive: false });
+    document.getElementById('btnWeaponPrev').addEventListener('click', () => {
+      if (this.state === STATES.AIM) {
+        this.currentTank.cycleWeapon(-1);
+        this.ui.updateWeapon(this.currentTank);
+      }
+    });
+
+    const sideViewBtn = document.getElementById('btnSideView');
+    const showSideView = (e) => {
+      if (e) e.preventDefault();
       if (this.state === STATES.AIM && !this.sideView.active) {
         this.sideView.show(this.currentTank, this.terrain, this.wind);
+      }
+    };
+    sideViewBtn.addEventListener('touchstart', showSideView, { passive: false });
+    sideViewBtn.addEventListener('click', showSideView);
+
+    this.setupJoystick();
+  }
+
+  setupJoystick() {
+    const base = document.getElementById('joystickBase');
+    const knob = document.getElementById('joystickKnob');
+    const maxDist = 30;
+    let touchId = null;
+    let centerX = 0;
+    let centerY = 0;
+
+    const getCenter = () => {
+      const rect = base.getBoundingClientRect();
+      centerX = rect.left + rect.width / 2;
+      centerY = rect.top + rect.height / 2;
+    };
+
+    const updateKnob = (clientX, clientY) => {
+      let offX = clientX - centerX;
+      let offY = clientY - centerY;
+      const dist = Math.sqrt(offX * offX + offY * offY);
+      const clamped = Math.min(dist, maxDist);
+      if (dist > 0) {
+        offX = (offX / dist) * clamped;
+        offY = (offY / dist) * clamped;
+      }
+      knob.style.transform = `translate(calc(-50% + ${offX}px), calc(-50% + ${offY}px))`;
+      knob.classList.add('active');
+
+      const magnitude = clamped / maxDist;
+      if (dist > 0) {
+        this.joystick.dx = (offX / clamped) * magnitude;
+        this.joystick.dz = (offY / clamped) * magnitude;
+      } else {
+        this.joystick.dx = 0;
+        this.joystick.dz = 0;
+      }
+      this.joystick.active = magnitude > 0.1;
+    };
+
+    const resetKnob = () => {
+      knob.style.transform = 'translate(-50%, -50%)';
+      knob.classList.remove('active');
+      this.joystick.dx = 0;
+      this.joystick.dz = 0;
+      this.joystick.active = false;
+      touchId = null;
+    };
+
+    base.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (touchId !== null) return;
+      const touch = e.changedTouches[0];
+      touchId = touch.identifier;
+      getCenter();
+      updateKnob(touch.clientX, touch.clientY);
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+      if (touchId === null) return;
+      for (const touch of e.changedTouches) {
+        if (touch.identifier === touchId) {
+          e.preventDefault();
+          updateKnob(touch.clientX, touch.clientY);
+          break;
+        }
+      }
+    }, { passive: false });
+
+    window.addEventListener('touchend', (e) => {
+      for (const touch of e.changedTouches) {
+        if (touch.identifier === touchId) {
+          resetKnob();
+          break;
+        }
+      }
+    });
+
+    window.addEventListener('touchcancel', (e) => {
+      for (const touch of e.changedTouches) {
+        if (touch.identifier === touchId) {
+          resetKnob();
+          break;
+        }
+      }
+    });
+
+    // Mouse fallback
+    let mouseDown = false;
+    base.addEventListener('mousedown', (e) => {
+      mouseDown = true;
+      getCenter();
+      updateKnob(e.clientX, e.clientY);
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!mouseDown) return;
+      updateKnob(e.clientX, e.clientY);
+    });
+    window.addEventListener('mouseup', () => {
+      if (mouseDown) {
+        mouseDown = false;
+        resetKnob();
       }
     });
   }
@@ -164,7 +337,7 @@ export class Game {
 
   randomizeWind() {
     const angle = Math.random() * Math.PI * 2;
-    const speed = randRange(0, 15);
+    const speed = randRange(0, 3);
     this.wind = {
       x: Math.cos(angle) * speed,
       z: Math.sin(angle) * speed,
@@ -179,7 +352,8 @@ export class Game {
     this.ui.updateAll(this.currentTank, this.tanks, this.wind);
     const instant = this.firstTurn || false;
     this.firstTurn = false;
-    this.cameraCtrl.returnToOrbit(this.currentTank.position, instant);
+    const mid = this.tanks[0].position.clone().add(this.tanks[1].position).multiplyScalar(0.5);
+    this.cameraCtrl.returnToOrbit(mid, instant);
 
     // Apply burn damage
     const burnDmg = this.currentTank.applyBurnDamage();
@@ -227,7 +401,11 @@ export class Game {
 
   handleImpact(result) {
     if (result.type === 'impact') {
-      const damages = this.explosions.createExplosion(
+      if (result.weapon.behavior === 'napalm') {
+        this.startNapalmFlow(result.position, result.weapon);
+        return;
+      }
+      this.explosions.createExplosion(
         result.position,
         result.weapon,
         this.terrain,
@@ -235,11 +413,230 @@ export class Game {
       );
       this.cameraCtrl.showImpact(result.position);
       this.ui.updateHealth(this.tanks);
-    } else if (result.type === 'split') {
-      this.activeProjectiles = result.submunitions;
-      return;
     }
-    // 'miss' just ends the turn
+  }
+
+  startNapalmFlow(position, weapon) {
+    this.cameraCtrl.showImpact(position);
+    const DROPLET_COUNT = 40;
+    const droplets = [];
+    for (let i = 0; i < DROPLET_COUNT; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2 + Math.random() * 6;
+      droplets.push({
+        x: position.x,
+        y: position.y + 1,
+        z: position.z,
+        vx: Math.cos(angle) * speed,
+        vy: 3 + Math.random() * 5,
+        vz: Math.sin(angle) * speed,
+        grounded: false,
+        settled: false,
+      });
+    }
+
+    const geo = new THREE.BufferGeometry();
+    const posArr = new Float32Array(DROPLET_COUNT * 3);
+    const colors = new Float32Array(DROPLET_COUNT * 3);
+    for (let i = 0; i < DROPLET_COUNT; i++) {
+      posArr[i * 3] = position.x;
+      posArr[i * 3 + 1] = position.y;
+      posArr[i * 3 + 2] = position.z;
+      colors[i * 3] = 1.0;
+      colors[i * 3 + 1] = 0.4 + Math.random() * 0.2;
+      colors[i * 3 + 2] = 0;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    const mat = new THREE.PointsMaterial({
+      size: 1.5,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.9,
+      sizeAttenuation: true,
+    });
+    const points = new THREE.Points(geo, mat);
+    this.scene.add(points);
+
+    this.napalmFlow = {
+      droplets,
+      points,
+      geo,
+      mat,
+      posArr,
+      weapon,
+      phase: 'flow',
+      flowTime: 0,
+      flowDuration: 2.5,
+      burnTime: 0,
+      burnDuration: 2.0,
+      fireVisuals: [],
+    };
+  }
+
+  updateNapalmFlow(dt) {
+    const nf = this.napalmFlow;
+    if (!nf) return;
+
+    if (nf.phase === 'flow') {
+      nf.flowTime += dt;
+      let allSettled = true;
+
+      for (let i = 0; i < nf.droplets.length; i++) {
+        const d = nf.droplets[i];
+        if (d.settled) continue;
+
+        if (!d.grounded) {
+          d.vy -= 9.81 * dt;
+          d.x += d.vx * dt;
+          d.y += d.vy * dt;
+          d.z += d.vz * dt;
+          if (!this.terrain.isOutOfBounds(d.x, d.z)) {
+            const gh = this.terrain.getHeight(d.x, d.z);
+            if (d.y <= gh) {
+              d.y = gh;
+              d.grounded = true;
+              d.vy = 0;
+            }
+          }
+          allSettled = false;
+        } else {
+          const n = this.terrain.getNormal(d.x, d.z);
+          const slopeX = -n.x / n.y;
+          const slopeZ = -n.z / n.y;
+          const slopeMag = Math.sqrt(slopeX * slopeX + slopeZ * slopeZ);
+
+          if (slopeMag > 0.02) {
+            const flowSpeed = slopeMag * 18;
+            d.vx = d.vx * 0.9 + slopeX / slopeMag * flowSpeed * 0.1;
+            d.vz = d.vz * 0.9 + slopeZ / slopeMag * flowSpeed * 0.1;
+            const mag = Math.sqrt(d.vx * d.vx + d.vz * d.vz);
+            const maxSpeed = 15;
+            if (mag > maxSpeed) {
+              d.vx *= maxSpeed / mag;
+              d.vz *= maxSpeed / mag;
+            }
+            d.x += d.vx * dt;
+            d.z += d.vz * dt;
+            if (!this.terrain.isOutOfBounds(d.x, d.z)) {
+              d.y = this.terrain.getHeight(d.x, d.z);
+            }
+            allSettled = false;
+          } else {
+            d.vx *= 0.85;
+            d.vz *= 0.85;
+            if (Math.abs(d.vx) + Math.abs(d.vz) < 0.3) {
+              d.settled = true;
+            } else {
+              d.x += d.vx * dt;
+              d.z += d.vz * dt;
+              if (!this.terrain.isOutOfBounds(d.x, d.z)) {
+                d.y = this.terrain.getHeight(d.x, d.z);
+              }
+              allSettled = false;
+            }
+          }
+        }
+
+        nf.posArr[i * 3] = d.x;
+        nf.posArr[i * 3 + 1] = d.y + 0.2;
+        nf.posArr[i * 3 + 2] = d.z;
+      }
+      nf.geo.attributes.position.needsUpdate = true;
+
+      if (allSettled || nf.flowTime > nf.flowDuration) {
+        nf.phase = 'ignite';
+        this.igniteNapalm(nf);
+      }
+    } else if (nf.phase === 'ignite') {
+      nf.burnTime += dt;
+      const t = nf.burnTime / nf.burnDuration;
+
+      for (const fv of nf.fireVisuals) {
+        const flicker = 0.8 + Math.random() * 0.4;
+        const scaleY = (1 - t * 0.5) * flicker;
+        fv.mesh.scale.set(1, Math.max(0.1, scaleY), 1);
+        fv.mat.opacity = Math.max(0, (1 - t) * 0.7);
+        fv.light.intensity = Math.max(0, (1 - t) * 8 * flicker);
+      }
+      nf.mat.opacity = Math.max(0, 0.9 - t);
+
+      if (nf.burnTime > nf.burnDuration) {
+        this.cleanupNapalm(nf);
+        this.napalmFlow = null;
+      }
+    }
+  }
+
+  igniteNapalm(nf) {
+    const clusterRadius = 3;
+    const clusters = [];
+
+    for (const d of nf.droplets) {
+      let added = false;
+      for (const c of clusters) {
+        const dx = d.x - c.x;
+        const dz = d.z - c.z;
+        if (dx * dx + dz * dz < clusterRadius * clusterRadius) {
+          c.x = (c.x * c.count + d.x) / (c.count + 1);
+          c.z = (c.z * c.count + d.z) / (c.count + 1);
+          c.count++;
+          added = true;
+          break;
+        }
+      }
+      if (!added) {
+        clusters.push({ x: d.x, z: d.z, count: 1 });
+      }
+    }
+
+    for (const c of clusters) {
+      const intensity = Math.min(c.count / 5, 1);
+      const radius = nf.weapon.blastRadius * (0.3 + intensity * 0.7);
+      const y = this.terrain.getHeight(c.x, c.z);
+
+      const fireGeo = new THREE.ConeGeometry(radius * 0.5, radius * 1.2, 8);
+      const fireMat = new THREE.MeshBasicMaterial({
+        color: 0xff4400,
+        transparent: true,
+        opacity: 0.7,
+      });
+      const fire = new THREE.Mesh(fireGeo, fireMat);
+      fire.position.set(c.x, y + radius * 0.6, c.z);
+      this.scene.add(fire);
+
+      const light = new THREE.PointLight(0xff6600, 8, radius * 4);
+      light.position.set(c.x, y + 2, c.z);
+      this.scene.add(light);
+
+      nf.fireVisuals.push({ mesh: fire, geo: fireGeo, mat: fireMat, light });
+
+      for (const tank of this.tanks) {
+        if (!tank.alive) continue;
+        const dist = Math.sqrt(
+          (tank.position.x - c.x) ** 2 + (tank.position.z - c.z) ** 2
+        );
+        if (dist < radius) {
+          const falloff = 1 - dist / radius;
+          tank.takeDamage(Math.round(nf.weapon.damage * falloff * intensity));
+          tank.setOnFire(nf.weapon.burnDamage, nf.weapon.burnTicks);
+        }
+      }
+    }
+
+    this.ui.updateHealth(this.tanks);
+  }
+
+  cleanupNapalm(nf) {
+    this.scene.remove(nf.points);
+    nf.geo.dispose();
+    nf.mat.dispose();
+    for (const fv of nf.fireVisuals) {
+      this.scene.remove(fv.mesh);
+      this.scene.remove(fv.light);
+      fv.geo.dispose();
+      fv.mat.dispose();
+    }
   }
 
   gameOver(winnerIndex) {
@@ -251,8 +648,8 @@ export class Game {
   handleInput(dt) {
     if (this.state !== STATES.AIM) return;
     const tank = this.currentTank;
-    const aimSpeed = degToRad(60) * dt;
-    const powerSpeed = 40 * dt;
+    const aimSpeed = degToRad(25) * dt;
+    const powerSpeed = 15 * dt;
 
     if (this.keys['KeyA']) tank.rotateTurret(aimSpeed);
     if (this.keys['KeyD']) tank.rotateTurret(-aimSpeed);
@@ -263,6 +660,13 @@ export class Game {
     if (this.keys['ArrowLeft']) tank.move(1);
     if (this.keys['ArrowRight']) tank.move(-1);
 
+    if (this.joystick.active) {
+      const mag = Math.sqrt(this.joystick.dx ** 2 + this.joystick.dz ** 2);
+      if (mag > 0.1) {
+        tank.moveXZ(this.joystick.dx, this.joystick.dz, mag);
+      }
+    }
+
     this.ui.updateAim(tank);
     this.ui.updateFuel(tank);
   }
@@ -272,28 +676,38 @@ export class Game {
     this.explosions.update(dt);
     this.sideView.update(dt);
 
+    for (const tank of this.tanks) {
+      tank.update(dt);
+    }
+    this.updateNapalmFlow(dt);
+
     if (this.state === STATES.AIM || this.state === STATES.TURN_START) {
       this.handleInput(dt);
     }
 
     if (this.state === STATES.FIRING) {
       let allDone = true;
+      let newProjectiles = [];
       for (let i = this.activeProjectiles.length - 1; i >= 0; i--) {
         const proj = this.activeProjectiles[i];
         if (!proj.alive) continue;
         allDone = false;
         const result = proj.update(dt);
         if (result) {
-          this.handleImpact(result);
-          this.activeProjectiles.splice(i, 1);
-          // Check if split created new projectiles
           if (result.type === 'split') {
-            allDone = false;
+            newProjectiles.push(...result.submunitions);
+          } else {
+            this.handleImpact(result);
           }
+          this.activeProjectiles.splice(i, 1);
         }
       }
+      if (newProjectiles.length > 0) {
+        this.activeProjectiles.push(...newProjectiles);
+        allDone = false;
+      }
 
-      if (allDone && !this.explosions.active) {
+      if (allDone && !this.explosions.active && !this.napalmFlow) {
         this.state = STATES.IMPACT;
         this.impactTimer = 0;
       }
@@ -312,8 +726,8 @@ export class Game {
         // Next turn
         this.currentPlayer = 1 - this.currentPlayer;
         // Slight wind variation each turn
-        this.wind.x += randRange(-2, 2);
-        this.wind.z += randRange(-2, 2);
+        this.wind.x += randRange(-0.5, 0.5);
+        this.wind.z += randRange(-0.5, 0.5);
         this.startTurn();
       }
     }
