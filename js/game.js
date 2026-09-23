@@ -43,6 +43,7 @@ export class Game {
     this.napalmFlow = null;
     this.joystick = { dx: 0, dz: 0, active: false };
     this.shotMarkers = [];
+    this.trees = [];
 
     this.setupScene();
     this.setupInput();
@@ -306,6 +307,14 @@ export class Game {
       m.dotMat.dispose();
     }
     this.shotMarkers = [];
+    for (const tree of this.trees) {
+      this.scene.remove(tree.group);
+      for (const child of tree.group.children) {
+        child.geometry.dispose();
+        child.material.dispose();
+      }
+    }
+    this.trees = [];
 
     this.ui.hideStart();
     this.ui.hideGameOver();
@@ -326,6 +335,8 @@ export class Game {
     t2.updateTurretRotation();
 
     this.tanks = [t1, t2];
+
+    this.placeTrees(t1.position, t2.position);
 
     // Set wind
     this.randomizeWind();
@@ -422,6 +433,7 @@ export class Game {
         this.terrain,
         this.tanks
       );
+      this.destroyTreesInRadius(result.position.x, result.position.z, result.weapon.blastRadius);
       this.cameraCtrl.showImpact(result.position);
       this.ui.updateHealth(this.tanks);
     }
@@ -475,6 +487,81 @@ export class Game {
       const opacity = age === 0 ? 1.0 : age === 1 ? 0.5 : 0.2;
       this.shotMarkers[i].ringMat.opacity = opacity;
       this.shotMarkers[i].dotMat.opacity = opacity;
+    }
+  }
+
+  placeTrees(spawn1, spawn2) {
+    const count = 25 + Math.floor(Math.random() * 20);
+    const half = this.terrain.worldSize / 2;
+
+    for (let i = 0; i < count; i++) {
+      const x = randRange(-half + 10, half - 10);
+      const z = randRange(-half + 10, half - 10);
+
+      const d1 = Math.sqrt((x - spawn1.x) ** 2 + (z - spawn1.z) ** 2);
+      const d2 = Math.sqrt((x - spawn2.x) ** 2 + (z - spawn2.z) ** 2);
+      if (d1 < 15 || d2 < 15) continue;
+
+      const h = this.terrain.getHeight(x, z);
+      if (h < 1.5) continue;
+
+      const group = new THREE.Group();
+      const isPine = Math.random() > 0.4;
+      const scale = 0.7 + Math.random() * 0.6;
+
+      const trunkH = (isPine ? 3 : 2.5) * scale;
+      const trunkR = 0.25 * scale;
+      const trunkGeo = new THREE.CylinderGeometry(trunkR * 0.7, trunkR, trunkH, 6);
+      const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5d4037 });
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.position.y = trunkH / 2;
+      trunk.castShadow = true;
+      group.add(trunk);
+
+      if (isPine) {
+        const tiers = 2 + Math.floor(Math.random() * 2);
+        for (let t = 0; t < tiers; t++) {
+          const tierR = (2.0 - t * 0.5) * scale;
+          const tierH = (2.5 - t * 0.4) * scale;
+          const leafGeo = new THREE.ConeGeometry(tierR, tierH, 7);
+          const green = 0x2e7d32 + Math.floor(Math.random() * 0x001500);
+          const leafMat = new THREE.MeshLambertMaterial({ color: green });
+          const leaf = new THREE.Mesh(leafGeo, leafMat);
+          leaf.position.y = trunkH + t * tierH * 0.55 + tierH * 0.3;
+          leaf.castShadow = true;
+          group.add(leaf);
+        }
+      } else {
+        const crownR = (1.8 + Math.random() * 0.8) * scale;
+        const leafGeo = new THREE.SphereGeometry(crownR, 8, 6);
+        const green = 0x388e3c + Math.floor(Math.random() * 0x002200);
+        const leafMat = new THREE.MeshLambertMaterial({ color: green });
+        const leaf = new THREE.Mesh(leafGeo, leafMat);
+        leaf.position.y = trunkH + crownR * 0.6;
+        leaf.castShadow = true;
+        group.add(leaf);
+      }
+
+      group.position.set(x, h, z);
+      group.rotation.y = Math.random() * Math.PI * 2;
+      this.scene.add(group);
+      this.trees.push({ group, x, z });
+    }
+  }
+
+  destroyTreesInRadius(wx, wz, radius) {
+    for (let i = this.trees.length - 1; i >= 0; i--) {
+      const t = this.trees[i];
+      const dx = t.x - wx;
+      const dz = t.z - wz;
+      if (dx * dx + dz * dz < radius * radius) {
+        this.scene.remove(t.group);
+        for (const child of t.group.children) {
+          child.geometry.dispose();
+          child.material.dispose();
+        }
+        this.trees.splice(i, 1);
+      }
     }
   }
 
@@ -711,6 +798,8 @@ export class Game {
       this.scene.add(light);
 
       nf.fireVisuals.push({ mesh: fireGroup, geo: allGeos, mat: fireMat, light });
+
+      this.destroyTreesInRadius(c.x, c.z, radius);
 
       for (const tank of this.tanks) {
         if (!tank.alive) continue;

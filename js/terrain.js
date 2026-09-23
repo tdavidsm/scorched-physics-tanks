@@ -17,6 +17,7 @@ export class Terrain {
   }
 
   generate() {
+    this.style = Math.floor(Math.random() * 5);
     const res = this.gridRes;
     const half = this.worldSize / 2;
     const seed = Math.random() * 100;
@@ -25,30 +26,74 @@ export class Terrain {
       for (let ix = 0; ix <= res; ix++) {
         const wx = (ix / res) * this.worldSize - half;
         const wz = (iz / res) * this.worldSize - half;
-
         const nx = (ix / res) + seed;
         const nz = (iz / res) + seed;
 
         let h = fbm(nx * 3, nz * 3, 5, 2.0, 0.45) * MAX_HEIGHT;
 
-        // Central ridge to force lobbed shots — narrow gaussian
-        const ridgeDist = Math.abs(wx) / half;
-        const ridgeProfile = Math.exp(-((ridgeDist - 0) ** 2) / (2 * 0.06));
-        const ridgeNoise = fbm(nx * 5 + 50, nz * 5 + 50, 3, 2, 0.5);
-        h += ridgeProfile * 14 * (0.6 + 0.4 * ridgeNoise);
+        if (this.style === 0) {
+          // Central ridge — classic Scorched Earth
+          const ridgeDist = Math.abs(wx) / half;
+          const ridgeProfile = Math.exp(-(ridgeDist ** 2) / (2 * 0.06));
+          const ridgeNoise = fbm(nx * 5 + 50, nz * 5 + 50, 3, 2, 0.5);
+          h += ridgeProfile * 14 * (0.6 + 0.4 * ridgeNoise);
+          const obs1 = Math.exp(-(((wx - 30) ** 2 + (wz - 25) ** 2) / (2 * 120)));
+          const obs2 = Math.exp(-(((wx + 25) ** 2 + (wz + 30) ** 2) / (2 * 100)));
+          h += obs1 * 10 + obs2 * 8;
+        } else if (this.style === 1) {
+          // Valley — tanks on high ground, basin in center
+          const centerDist = Math.sqrt(wx * wx + wz * wz) / half;
+          const bowl = smoothstep(0.15, 0.6, centerDist) * 18;
+          h = h * 0.4 + bowl;
+          const rimNoise = fbm(nx * 4 + 30, nz * 4 + 30, 3, 2, 0.5);
+          h += (1 - centerDist) < 0.3 ? 0 : rimNoise * 6;
+        } else if (this.style === 2) {
+          // Cliff — one side high, other low
+          const slope = (wx / half) * 0.5 + 0.5;
+          const cliffH = lerp(4, 22, slope);
+          h = h * 0.5 + cliffH;
+          const ledgeNoise = fbm(nx * 6 + 70, nz * 3 + 70, 3, 2, 0.5);
+          const ledge = Math.exp(-((slope - 0.5) ** 2) / 0.02) * 8 * ledgeNoise;
+          h += ledge;
+        } else if (this.style === 3) {
+          // Rolling hills — scattered mounds, no dominant feature
+          h *= 0.7;
+          for (let k = 0; k < 6; k++) {
+            const cx = (fbm(seed + k * 7, 0, 2, 2, 0.5) - 0.5) * this.worldSize * 0.7;
+            const cz = (fbm(0, seed + k * 11, 2, 2, 0.5) - 0.5) * this.worldSize * 0.7;
+            const amp = 6 + fbm(seed + k * 3, seed + k * 5, 2, 2, 0.5) * 12;
+            const width = 80 + fbm(seed + k * 13, 0, 2, 2, 0.5) * 200;
+            h += Math.exp(-((wx - cx) ** 2 + (wz - cz) ** 2) / (2 * width)) * amp;
+          }
+        } else {
+          // Canyon — deep channel cutting between spawn areas
+          h *= 0.6;
+          const baseLevel = 12 + fbm(nx * 2 + 90, nz * 2 + 90, 3, 2, 0.5) * 6;
+          h += baseLevel;
+          const canyonPath = Math.sin(wz / 30) * 8 + fbm(nx * 0.5 + 40, nz * 2 + 40, 3, 2, 0.5) * 12;
+          const distFromCanyon = Math.abs(wx - canyonPath);
+          const canyonCut = smoothstep(6, 18, distFromCanyon);
+          h *= canyonCut;
+          h = Math.max(h, 1.5);
+        }
 
-        // Scattered hills
-        const obs1 = Math.exp(-(((wx - 30) ** 2 + (wz - 25) ** 2) / (2 * 120)));
-        const obs2 = Math.exp(-(((wx + 25) ** 2 + (wz + 30) ** 2) / (2 * 100)));
-        const obs3 = Math.exp(-(((wx - 15) ** 2 + (wz + 40) ** 2) / (2 * 80)));
-        h += obs1 * 10 + obs2 * 8 + obs3 * 7;
-
-        // Gently flatten spawn areas — small radius, keep surrounding terrain
+        // Flatten spawn areas
+        let flatBaseL, flatBaseR;
+        if (this.style === 2) {
+          flatBaseL = 6;
+          flatBaseR = 20;
+        } else if (this.style === 1) {
+          flatBaseL = 16 + fbm(nx * 2 + 10, nz * 2 + 10, 2, 2, 0.5) * 3;
+          flatBaseR = 16 + fbm(nx * 2 + 20, nz * 2 + 20, 2, 2, 0.5) * 3;
+        } else {
+          const baseH = 4 + fbm(nx * 2 + 10, nz * 2 + 10, 2, 2, 0.5) * 4;
+          flatBaseL = baseH;
+          flatBaseR = baseH;
+        }
         const spawnFlatL = Math.exp(-(((wx + 70) ** 2 + wz ** 2) / (2 * 60)));
         const spawnFlatR = Math.exp(-(((wx - 70) ** 2 + wz ** 2) / (2 * 60)));
-        const flatFactor = Math.max(spawnFlatL, spawnFlatR);
-        const baseH = 4 + fbm(nx * 2 + 10, nz * 2 + 10, 2, 2, 0.5) * 4;
-        h = lerp(h, baseH, flatFactor * 0.6);
+        h = lerp(h, flatBaseL, spawnFlatL * 0.6);
+        h = lerp(h, flatBaseR, spawnFlatR * 0.6);
 
         // Keep edges lower
         const edgeDist = Math.max(Math.abs(wx), Math.abs(wz)) / half;
