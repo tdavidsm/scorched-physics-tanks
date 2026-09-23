@@ -149,7 +149,7 @@ export class Projectile {
     }
 
     const normal = this.terrain.getNormal(this.pos.x, this.pos.z);
-    const slopeForce = new THREE.Vector3(-normal.x, 0, -normal.z).normalize().multiplyScalar(15);
+    const slopeForce = new THREE.Vector3(normal.x, 0, normal.z).normalize().multiplyScalar(15);
     const speed = 12;
 
     this.vel.x = this.vel.x * 0.95 + slopeForce.x * dt;
@@ -196,11 +196,13 @@ export class Projectile {
     const results = [];
     const count = this.weapon.submunitions;
     const spread = this.weapon.spreadRadius;
+    const golden = Math.PI * (3 - Math.sqrt(5));
 
     for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2;
-      const offsetX = Math.cos(angle) * spread * (0.5 + Math.random() * 0.5);
-      const offsetZ = Math.sin(angle) * spread * (0.5 + Math.random() * 0.5);
+      const r = spread * Math.sqrt((i + 0.5) / count);
+      const angle = i * golden;
+      const offsetX = Math.cos(angle) * r * (0.8 + Math.random() * 0.4);
+      const offsetZ = Math.sin(angle) * r * (0.8 + Math.random() * 0.4);
 
       const subVel = new THREE.Vector3(
         this.vel.x * 0.3 + offsetX,
@@ -212,7 +214,7 @@ export class Projectile {
         this.scene,
         this.pos.clone(),
         subVel,
-        { ...this.weapon, behavior: 'standard', name: 'MIRV Warhead' },
+        { ...this.weapon, behavior: 'standard', name: 'MIRV Warhead', damage: Math.round(this.weapon.damage * 5 / count) },
         this.wind,
         this.terrain,
         this.tanks

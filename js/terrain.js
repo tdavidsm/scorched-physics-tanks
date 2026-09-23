@@ -11,6 +11,7 @@ export class Terrain {
     this.worldSize = WORLD_SIZE;
     this.gridRes = GRID_RES;
     this.heightData = new Float32Array((GRID_RES + 1) * (GRID_RES + 1));
+    this.damageData = new Float32Array((GRID_RES + 1) * (GRID_RES + 1));
     this.mesh = null;
     this.generate();
   }
@@ -111,6 +112,14 @@ export class Terrain {
         g = lerp(0.40, 0.78, s);
         b = lerp(0.25, 0.75, s);
       }
+      const dmg = this.damageData[iz * (res + 1) + ix];
+      if (dmg > 0) {
+        const darken = 1 - dmg * 0.7;
+        r *= darken;
+        g *= darken;
+        b *= darken;
+        r += dmg * 0.05;
+      }
       colors[i * 3] = r;
       colors[i * 3 + 1] = g;
       colors[i * 3 + 2] = b;
@@ -179,6 +188,7 @@ export class Terrain {
           const factor = 1 - (dist / radius);
           const idx = iz * (res + 1) + ix;
           this.heightData[idx] = Math.max(0, this.heightData[idx] - depth * factor * factor);
+          this.damageData[idx] = Math.min(1, this.damageData[idx] + factor * factor * 0.6);
         }
       }
     }

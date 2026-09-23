@@ -42,6 +42,7 @@ export class Game {
     this.impactTimer = 0;
     this.napalmFlow = null;
     this.joystick = { dx: 0, dz: 0, active: false };
+    this.shotMarkers = [];
 
     this.setupScene();
     this.setupInput();
@@ -296,6 +297,15 @@ export class Game {
     }
     this.tanks = [];
     this.activeProjectiles = [];
+    for (const m of this.shotMarkers) {
+      this.scene.remove(m.ring);
+      this.scene.remove(m.dot);
+      m.ringGeo.dispose();
+      m.ringMat.dispose();
+      m.dotGeo.dispose();
+      m.dotMat.dispose();
+    }
+    this.shotMarkers = [];
 
     this.ui.hideStart();
     this.ui.hideGameOver();
@@ -401,6 +411,7 @@ export class Game {
 
   handleImpact(result) {
     if (result.type === 'impact') {
+      this.addShotMarker(result.position);
       if (result.weapon.behavior === 'napalm') {
         this.startNapalmFlow(result.position, result.weapon);
         return;
@@ -413,6 +424,57 @@ export class Game {
       );
       this.cameraCtrl.showImpact(result.position);
       this.ui.updateHealth(this.tanks);
+    }
+  }
+
+  addShotMarker(position) {
+    const y = this.terrain.getHeight(position.x, position.z) + 0.3;
+    const ringGeo = new THREE.RingGeometry(0.8, 1.2, 16);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 1.0,
+      side: THREE.DoubleSide,
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.set(position.x, y, position.z);
+    ring.rotation.x = -Math.PI / 2;
+    this.scene.add(ring);
+
+    const dotGeo = new THREE.CircleGeometry(0.4, 12);
+    const dotMat = new THREE.MeshBasicMaterial({
+      color: 0xff4444,
+      transparent: true,
+      opacity: 1.0,
+      side: THREE.DoubleSide,
+    });
+    const dot = new THREE.Mesh(dotGeo, dotMat);
+    dot.position.set(position.x, y + 0.05, position.z);
+    dot.rotation.x = -Math.PI / 2;
+    this.scene.add(dot);
+
+    this.shotMarkers.push({ ring, ringGeo, ringMat, dot, dotGeo, dotMat });
+
+    while (this.shotMarkers.length > 3) {
+      const old = this.shotMarkers.shift();
+      this.scene.remove(old.ring);
+      this.scene.remove(old.dot);
+      old.ringGeo.dispose();
+      old.ringMat.dispose();
+      old.dotGeo.dispose();
+      old.dotMat.dispose();
+    }
+
+    this.updateMarkerOpacity();
+  }
+
+  updateMarkerOpacity() {
+    const count = this.shotMarkers.length;
+    for (let i = 0; i < count; i++) {
+      const age = count - 1 - i;
+      const opacity = age === 0 ? 1.0 : age === 1 ? 0.5 : 0.2;
+      this.shotMarkers[i].ringMat.opacity = opacity;
+      this.shotMarkers[i].dotMat.opacity = opacity;
     }
   }
 
@@ -502,8 +564,8 @@ export class Game {
           allSettled = false;
         } else {
           const n = this.terrain.getNormal(d.x, d.z);
-          const slopeX = -n.x / n.y;
-          const slopeZ = -n.z / n.y;
+          const slopeX = n.x / n.y;
+          const slopeZ = n.z / n.y;
           const slopeMag = Math.sqrt(slopeX * slopeX + slopeZ * slopeZ);
 
           if (slopeMag > 0.02) {
@@ -556,8 +618,15 @@ export class Game {
         const flicker = 0.8 + Math.random() * 0.4;
         const scaleY = (1 - t * 0.5) * flicker;
         fv.mesh.scale.set(1, Math.max(0.1, scaleY), 1);
-        fv.mat.opacity = Math.max(0, (1 - t) * 0.7);
-        fv.light.intensity = Math.max(0, (1 - t) * 8 * flicker);
+        for (const child of fv.mesh.children) {
+          child.material.opacity = Math.max(0, (1 - t) * 0.5 * flicker);
+          child.rotation.y += dt * (1 + Math.random());
+          if (child.userData.vy) {
+            child.position.y += child.userData.vy * dt;
+            if (child.position.y > child.userData.maxY) child.position.y = 0;
+          }
+        }
+        fv.light.intensity = Math.max(0, (1 - t) * 10 * flicker);
       }
       nf.mat.opacity = Math.max(0, 0.9 - t);
 
@@ -595,21 +664,53 @@ export class Game {
       const radius = nf.weapon.blastRadius * (0.3 + intensity * 0.7);
       const y = this.terrain.getHeight(c.x, c.z);
 
-      const fireGeo = new THREE.ConeGeometry(radius * 0.5, radius * 1.2, 8);
-      const fireMat = new THREE.MeshBasicMaterial({
-        color: 0xff4400,
-        transparent: true,
-        opacity: 0.7,
-      });
-      const fire = new THREE.Mesh(fireGeo, fireMat);
-      fire.position.set(c.x, y + radius * 0.6, c.z);
-      this.scene.add(fire);
+      const fireGroup = new THREE.Group();
+      fireGroup.position.set(c.x, y, c.z);
 
-      const light = new THREE.PointLight(0xff6600, 8, radius * 4);
+      const layers = [
+        { color: 0xff2200, h: radius * 0.8, r: radius * 0.45, yOff: 0 },
+        { color: 0xff6600, h: radius * 1.0, r: radius * 0.35, yOff: radius * 0.1 },
+        { color: 0xffaa00, h: radius * 0.6, r: radius * 0.2, yOff: radius * 0.3 },
+        { color: 0xffdd44, h: radius * 0.3, r: radius * 0.1, yOff: radius * 0.5 },
+      ];
+      const allGeos = [];
+      for (const l of layers) {
+        const g = new THREE.ConeGeometry(l.r, l.h, 6);
+        const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+          color: l.color, transparent: true, opacity: 0.5,
+        }));
+        m.position.y = l.yOff + l.h * 0.5;
+        m.rotation.y = Math.random() * Math.PI;
+        fireGroup.add(m);
+        allGeos.push(g);
+      }
+
+      const emberCount = Math.floor(8 * intensity);
+      for (let e = 0; e < emberCount; e++) {
+        const eg = new THREE.SphereGeometry(0.15 + Math.random() * 0.2, 4, 4);
+        const em = new THREE.Mesh(eg, new THREE.MeshBasicMaterial({
+          color: Math.random() > 0.5 ? 0xff4400 : 0xffaa00, transparent: true, opacity: 0.8,
+        }));
+        em.position.set(
+          (Math.random() - 0.5) * radius * 0.8,
+          Math.random() * radius * 0.8,
+          (Math.random() - 0.5) * radius * 0.8
+        );
+        em.userData.vy = 1 + Math.random() * 3;
+        em.userData.maxY = radius * 1.5;
+        fireGroup.add(em);
+        allGeos.push(eg);
+      }
+
+      this.scene.add(fireGroup);
+
+      const fireMat = fireGroup.children[0].material;
+
+      const light = new THREE.PointLight(0xff6600, 10 * intensity, radius * 5);
       light.position.set(c.x, y + 2, c.z);
       this.scene.add(light);
 
-      nf.fireVisuals.push({ mesh: fire, geo: fireGeo, mat: fireMat, light });
+      nf.fireVisuals.push({ mesh: fireGroup, geo: allGeos, mat: fireMat, light });
 
       for (const tank of this.tanks) {
         if (!tank.alive) continue;
@@ -632,10 +733,12 @@ export class Game {
     nf.geo.dispose();
     nf.mat.dispose();
     for (const fv of nf.fireVisuals) {
+      for (const child of fv.mesh.children) {
+        child.geometry.dispose();
+        child.material.dispose();
+      }
       this.scene.remove(fv.mesh);
       this.scene.remove(fv.light);
-      fv.geo.dispose();
-      fv.mat.dispose();
     }
   }
 

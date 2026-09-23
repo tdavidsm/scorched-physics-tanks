@@ -36,10 +36,10 @@ export const WEAPONS = [
     craterDepth: 2,
     ammo: 3,
     color: '#e040fb',
-    description: 'Splits into 5 warheads at peak altitude.',
+    description: 'Splits into 8 warheads at peak altitude.',
     behavior: 'mirv',
-    submunitions: 5,
-    spreadRadius: 15,
+    submunitions: 8,
+    spreadRadius: 10,
   },
   {
     name: 'Bouncer',
