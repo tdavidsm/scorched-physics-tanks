@@ -249,6 +249,7 @@ export class Projectile {
       type: 'impact',
       position: this.pos.clone(),
       weapon: this.weapon,
+      launchAngleDeg: this.launchAngleDeg,
     };
     this.cleanup();
     return result;

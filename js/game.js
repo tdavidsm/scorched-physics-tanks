@@ -43,7 +43,11 @@ export class Game {
     this.napalmFlow = null;
     this.joystick = { dx: 0, dz: 0, active: false };
     this.shotMarkers = [];
+    this.tracerLabels = [];
     this.trees = [];
+    this.replayData = [];
+    this.currentShotPath = null;
+    this.replay = null;
 
     this.setupScene();
     this.setupInput();
@@ -307,6 +311,7 @@ export class Game {
       m.dotMat.dispose();
     }
     this.shotMarkers = [];
+    this.clearTracerLabels();
     for (const tree of this.trees) {
       this.scene.remove(tree.group);
       for (const child of tree.group.children) {
@@ -315,6 +320,9 @@ export class Game {
       }
     }
     this.trees = [];
+    this.cleanupReplay();
+    this.replayData = [];
+    this.currentShotPath = null;
 
     this.ui.hideStart();
     this.ui.hideGameOver();
@@ -406,9 +414,12 @@ export class Game {
 
     const startPos = tank.muzzleWorldPosition;
     this.activeProjectiles = [];
+    this.currentShotPath = { positions: [], color: weapon.color, impactPos: null, sampleCounter: 0 };
 
     if (weapon.elevationOffsets) {
+      if (weapon.behavior === 'tracer') this.clearTracerLabels();
       const baseElevation = tank.barrelElevation;
+      const baseAngleDeg = (baseElevation * 180) / Math.PI;
       for (const offsetDeg of weapon.elevationOffsets) {
         const el = baseElevation + degToRad(offsetDeg);
         const speed = (tank.power / 100) * 60;
@@ -421,6 +432,7 @@ export class Game {
           this.scene, startPos.clone(), velocity, weapon,
           this.wind, this.terrain, this.tanks
         );
+        proj.launchAngleDeg = Math.round((baseAngleDeg + offsetDeg) * 10) / 10;
         this.activeProjectiles.push(proj);
       }
     } else {
@@ -437,7 +449,14 @@ export class Game {
 
   handleImpact(result) {
     if (result.type === 'impact') {
-      this.addShotMarker(result.position);
+      if (this.currentShotPath && !this.currentShotPath.impactPos) {
+        this.currentShotPath.impactPos = { x: result.position.x, y: result.position.y, z: result.position.z };
+      }
+      if (result.weapon.behavior === 'tracer') {
+        this.addTracerLabel(result.position, result.launchAngleDeg);
+      } else {
+        this.addShotMarker(result.position);
+      }
       if (result.weapon.behavior === 'napalm') {
         this.startNapalmFlow(result.position, result.weapon);
         return;
@@ -503,6 +522,54 @@ export class Game {
       this.shotMarkers[i].ringMat.opacity = opacity;
       this.shotMarkers[i].dotMat.opacity = opacity;
     }
+  }
+
+  addTracerLabel(position, angleDeg) {
+    const y = this.terrain.getHeight(position.x, position.z) + 0.3;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.font = 'bold 36px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#aaffaa';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    const text = `${angleDeg}°`;
+    ctx.strokeText(text, 64, 32);
+    ctx.fillText(text, 64, 32);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.set(position.x, y + 2.5, position.z);
+    sprite.scale.set(4, 2, 1);
+    this.scene.add(sprite);
+
+    const dotGeo = new THREE.CircleGeometry(0.3, 12);
+    const dotMat = new THREE.MeshBasicMaterial({
+      color: 0xaaffaa, transparent: true, opacity: 0.9, side: THREE.DoubleSide,
+    });
+    const dot = new THREE.Mesh(dotGeo, dotMat);
+    dot.position.set(position.x, y + 0.05, position.z);
+    dot.rotation.x = -Math.PI / 2;
+    this.scene.add(dot);
+
+    this.tracerLabels.push({ sprite, texture, mat, dot, dotGeo, dotMat });
+  }
+
+  clearTracerLabels() {
+    for (const t of this.tracerLabels) {
+      this.scene.remove(t.sprite);
+      t.texture.dispose();
+      t.mat.dispose();
+      this.scene.remove(t.dot);
+      t.dotGeo.dispose();
+      t.dotMat.dispose();
+    }
+    this.tracerLabels = [];
   }
 
   placeTrees(spawn1, spawn2) {
@@ -850,6 +917,151 @@ export class Game {
     this.state = STATES.GAME_OVER;
     this.ui.hideHud();
     this.ui.showGameOver(winnerIndex);
+    this.startReplay();
+  }
+
+  startReplay() {
+    if (this.replayData.length === 0) return;
+    this.replay = {
+      shotIndex: 0,
+      pathIndex: 0,
+      pauseTimer: 1.0,
+      pausing: true,
+      speed: 3,
+      mesh: null,
+      glow: null,
+      trail: null,
+      trailGeo: null,
+      flash: null,
+      flashTimer: 0,
+    };
+    this.cameraCtrl.orbit.enabled = false;
+  }
+
+  updateReplay(dt) {
+    if (!this.replay || this.replayData.length === 0) return;
+    const r = this.replay;
+
+    if (r.pausing) {
+      r.pauseTimer -= dt;
+      if (r.pauseTimer <= 0) {
+        r.pausing = false;
+        r.pathIndex = 0;
+        this.setupReplayShot(r.shotIndex);
+      }
+      return;
+    }
+
+    if (r.flash) {
+      r.flashTimer -= dt;
+      r.flash.intensity = Math.max(0, r.flashTimer * 30);
+      if (r.flashTimer <= 0) {
+        this.scene.remove(r.flash);
+        r.flash = null;
+      }
+    }
+
+    const shot = this.replayData[r.shotIndex];
+    r.pathIndex += dt * 60 * r.speed;
+
+    const idx = Math.floor(r.pathIndex);
+    if (idx >= shot.positions.length) {
+      this.cleanupReplayShot();
+      if (shot.impactPos) {
+        const fl = new THREE.PointLight(0xff6600, 30, 40);
+        fl.position.set(shot.impactPos.x, shot.impactPos.y + 2, shot.impactPos.z);
+        this.scene.add(fl);
+        r.flash = fl;
+        r.flashTimer = 0.5;
+      }
+      r.shotIndex = (r.shotIndex + 1) % this.replayData.length;
+      r.pausing = true;
+      r.pauseTimer = 1.5;
+
+      const mid = this.tanks[0].position.clone().add(this.tanks[1].position).multiplyScalar(0.5);
+      this.cameraCtrl.overviewFocusOn(mid);
+      return;
+    }
+
+    const p = shot.positions[idx];
+    if (r.mesh) {
+      r.mesh.position.set(p.x, p.y, p.z);
+
+      const trailStart = Math.max(0, idx - 30);
+      const trailPts = [];
+      for (let i = trailStart; i <= idx; i++) {
+        const tp = shot.positions[i];
+        trailPts.push(new THREE.Vector3(tp.x, tp.y, tp.z));
+      }
+      if (trailPts.length >= 2) {
+        if (r.trail) {
+          this.scene.remove(r.trail);
+          r.trailGeo.dispose();
+        }
+        r.trailGeo = new THREE.BufferGeometry().setFromPoints(trailPts);
+        r.trail = new THREE.Line(r.trailGeo, new THREE.LineBasicMaterial({
+          color: shot.color, transparent: true, opacity: 0.5,
+        }));
+        this.scene.add(r.trail);
+      }
+
+      const camTarget = new THREE.Vector3(p.x, p.y, p.z);
+      this.camera.position.lerp(
+        new THREE.Vector3(p.x - 15, p.y + 12, p.z + 20), dt * 4
+      );
+      this.cameraCtrl.orbit.target.lerp(camTarget, dt * 4);
+      this.cameraCtrl.orbit.update();
+    }
+  }
+
+  setupReplayShot(shotIndex) {
+    const shot = this.replayData[shotIndex];
+    if (!shot || shot.positions.length === 0) return;
+
+    const geo = new THREE.SphereGeometry(0.5, 8, 8);
+    const mat = new THREE.MeshBasicMaterial({ color: shot.color });
+    this.replay.mesh = new THREE.Mesh(geo, mat);
+    const start = shot.positions[0];
+    this.replay.mesh.position.set(start.x, start.y, start.z);
+    this.scene.add(this.replay.mesh);
+
+    const glowGeo = new THREE.SphereGeometry(1.5, 6, 6);
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: shot.color, transparent: true, opacity: 0.2,
+    });
+    this.replay.glow = new THREE.Mesh(glowGeo, glowMat);
+    this.replay.mesh.add(this.replay.glow);
+  }
+
+  cleanupReplayShot() {
+    if (this.replay.mesh) {
+      if (this.replay.glow) {
+        this.replay.glow.geometry.dispose();
+        this.replay.glow.material.dispose();
+      }
+      this.replay.mesh.geometry.dispose();
+      this.replay.mesh.material.dispose();
+      this.scene.remove(this.replay.mesh);
+      this.replay.mesh = null;
+      this.replay.glow = null;
+    }
+    if (this.replay.trail) {
+      this.scene.remove(this.replay.trail);
+      this.replay.trailGeo.dispose();
+      this.replay.trail.material.dispose();
+      this.replay.trail = null;
+      this.replay.trailGeo = null;
+    }
+  }
+
+  cleanupReplay() {
+    if (this.replay) {
+      this.cleanupReplayShot();
+      if (this.replay.flash) {
+        this.scene.remove(this.replay.flash);
+      }
+      this.replay = null;
+    }
   }
 
   handleInput(dt) {
@@ -888,6 +1100,10 @@ export class Game {
     }
     this.updateNapalmFlow(dt);
 
+    if (this.state === STATES.GAME_OVER) {
+      this.updateReplay(dt);
+    }
+
     if (this.state === STATES.AIM || this.state === STATES.TURN_START) {
       this.handleInput(dt);
     }
@@ -914,7 +1130,21 @@ export class Game {
         allDone = false;
       }
 
+      if (this.currentShotPath && this.activeProjectiles.length > 0) {
+        const lead = this.activeProjectiles.find(p => p.alive);
+        if (lead) {
+          this.currentShotPath.sampleCounter++;
+          if (this.currentShotPath.sampleCounter % 2 === 0) {
+            this.currentShotPath.positions.push({ x: lead.pos.x, y: lead.pos.y, z: lead.pos.z });
+          }
+        }
+      }
+
       if (allDone && !this.explosions.active && !this.napalmFlow) {
+        if (this.currentShotPath && this.currentShotPath.positions.length > 2) {
+          this.replayData.push(this.currentShotPath);
+        }
+        this.currentShotPath = null;
         this.state = STATES.IMPACT;
         this.impactTimer = 0;
       }
