@@ -131,14 +131,14 @@ export class Game {
     // Generate terrain
     this.terrain = new Terrain(this.scene);
 
-    // Place tanks
+    // Place tanks at offset z positions for distinct terrain views
     const t1 = new Tank(this.scene, this.terrain, 0);
-    t1.setPosition(-70, 0);
+    t1.setPosition(-70, randRange(-20, 20));
     t1.turretAngle = Math.PI / 2;
     t1.updateTurretRotation();
 
     const t2 = new Tank(this.scene, this.terrain, 1);
-    t2.setPosition(70, 0);
+    t2.setPosition(70, randRange(-20, 20));
     t2.turretAngle = -Math.PI / 2;
     t2.updateTurretRotation();
 
@@ -147,9 +147,10 @@ export class Game {
     // Set wind
     this.randomizeWind();
 
-    // Start first turn
+    // Start first turn — instant camera snap on game start
     this.currentPlayer = 0;
     this.turn = 0;
+    this.firstTurn = true;
     this.startTurn();
   }
 
@@ -176,7 +177,9 @@ export class Game {
     this.currentTank.resetFuel();
     this.ui.showTurnBanner(this.currentPlayer);
     this.ui.updateAll(this.currentTank, this.tanks, this.wind);
-    this.cameraCtrl.returnToOrbit(this.currentTank.position);
+    const instant = this.firstTurn || false;
+    this.firstTurn = false;
+    this.cameraCtrl.returnToOrbit(this.currentTank.position, instant);
 
     // Apply burn damage
     const burnDmg = this.currentTank.applyBurnDamage();

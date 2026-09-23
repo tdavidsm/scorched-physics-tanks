@@ -42,12 +42,12 @@ export class Terrain {
         const obs3 = Math.exp(-(((wx - 15) ** 2 + (wz + 40) ** 2) / (2 * 80)));
         h += obs1 * 10 + obs2 * 8 + obs3 * 7;
 
-        // Flatten spawn areas
-        const spawnFlatL = Math.exp(-(((wx + 70) ** 2 + wz ** 2) / (2 * 200)));
-        const spawnFlatR = Math.exp(-(((wx - 70) ** 2 + wz ** 2) / (2 * 200)));
+        // Gently flatten spawn areas — small radius, keep surrounding terrain
+        const spawnFlatL = Math.exp(-(((wx + 70) ** 2 + wz ** 2) / (2 * 60)));
+        const spawnFlatR = Math.exp(-(((wx - 70) ** 2 + wz ** 2) / (2 * 60)));
         const flatFactor = Math.max(spawnFlatL, spawnFlatR);
-        const baseH = 3;
-        h = lerp(h, baseH, flatFactor * 0.8);
+        const baseH = 4 + fbm(nx * 2 + 10, nz * 2 + 10, 2, 2, 0.5) * 4;
+        h = lerp(h, baseH, flatFactor * 0.6);
 
         // Keep edges lower
         const edgeDist = Math.max(Math.abs(wx), Math.abs(wz)) / half;
