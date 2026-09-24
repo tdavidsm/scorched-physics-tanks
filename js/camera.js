@@ -159,10 +159,19 @@ export class CameraController {
         cosEl * Math.cos(tank.turretAngle)
       );
 
-      const behind = barrelDir.clone().multiplyScalar(-6);
-      const up = new THREE.Vector3(0, 3, 0);
-      const camPos = muzzle.clone().add(behind).add(up);
-      const lookAt = muzzle.clone().add(barrelDir.clone().multiplyScalar(30));
+      const hDir = new THREE.Vector3(
+        Math.sin(tank.turretAngle), 0, Math.cos(tank.turretAngle)
+      );
+      const camPos = new THREE.Vector3(
+        tankPos.x - hDir.x * 5,
+        tankPos.y + 5,
+        tankPos.z - hDir.z * 5
+      );
+      const lookAt = new THREE.Vector3(
+        tankPos.x + hDir.x * 20,
+        tankPos.y + 3,
+        tankPos.z + hDir.z * 20
+      );
 
       this.camera.position.lerp(camPos, dt * 8);
       this.orbit.target.lerp(lookAt, dt * 8);
