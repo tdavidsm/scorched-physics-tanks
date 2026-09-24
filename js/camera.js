@@ -29,6 +29,9 @@ export class CameraController {
     this._transitioning = false;
     this._targetPos = null;
     this._targetCamPos = null;
+    this.aimingTank = null;
+    this.aimingEnemy = null;
+    this.enemyArrow = null;
   }
 
   focusOn(position, instant = false) {
@@ -90,10 +93,92 @@ export class CameraController {
     this.orbit.enabled = true;
     this.followTarget = null;
     this.impactTarget = null;
+    this.hideEnemyArrow();
     this.overviewFocusOn(mapCenter, instant);
   }
 
+  startAiming(tank, enemy, scene) {
+    this.mode = 'aiming';
+    this.aimingTank = tank;
+    this.aimingEnemy = enemy;
+    this.orbit.enabled = false;
+    this._transitioning = false;
+    this.showEnemyArrow(scene);
+  }
+
+  stopAiming(mapCenter) {
+    this.mode = 'orbit';
+    this.aimingTank = null;
+    this.aimingEnemy = null;
+    this.orbit.enabled = true;
+    this.hideEnemyArrow();
+    if (mapCenter) this.overviewFocusOn(mapCenter);
+  }
+
+  showEnemyArrow(scene) {
+    if (this.enemyArrow) return;
+    const shape = new THREE.Shape();
+    shape.moveTo(0, -2.5);
+    shape.lineTo(-1.5, 0.5);
+    shape.lineTo(-0.5, 0.5);
+    shape.lineTo(-0.5, 2.5);
+    shape.lineTo(0.5, 2.5);
+    shape.lineTo(0.5, 0.5);
+    shape.lineTo(1.5, 0.5);
+    shape.closePath();
+    const geo = new THREE.ShapeGeometry(shape);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xff4444, transparent: true, opacity: 0.85,
+      side: THREE.DoubleSide, depthTest: false,
+    });
+    this.enemyArrow = new THREE.Mesh(geo, mat);
+    this.enemyArrow.renderOrder = 999;
+    scene.add(this.enemyArrow);
+  }
+
+  hideEnemyArrow() {
+    if (this.enemyArrow) {
+      this.enemyArrow.parent?.remove(this.enemyArrow);
+      this.enemyArrow.geometry.dispose();
+      this.enemyArrow.material.dispose();
+      this.enemyArrow = null;
+    }
+  }
+
   update(dt) {
+    if (this.mode === 'aiming' && this.aimingTank) {
+      const tank = this.aimingTank;
+      const muzzle = tank.muzzleWorldPosition;
+      const tankPos = tank.position;
+
+      const cosEl = Math.cos(tank.barrelElevation);
+      const sinEl = Math.sin(tank.barrelElevation);
+      const barrelDir = new THREE.Vector3(
+        cosEl * Math.sin(tank.turretAngle),
+        sinEl,
+        cosEl * Math.cos(tank.turretAngle)
+      );
+
+      const behind = barrelDir.clone().multiplyScalar(-6);
+      const up = new THREE.Vector3(0, 3, 0);
+      const camPos = muzzle.clone().add(behind).add(up);
+      const lookAt = muzzle.clone().add(barrelDir.clone().multiplyScalar(30));
+
+      this.camera.position.lerp(camPos, dt * 8);
+      this.orbit.target.lerp(lookAt, dt * 8);
+      this.orbit.update();
+
+      if (this.enemyArrow && this.aimingEnemy) {
+        const enemyPos = this.aimingEnemy.position;
+        this.enemyArrow.position.set(enemyPos.x, enemyPos.y + 15, enemyPos.z);
+        this.enemyArrow.lookAt(this.camera.position);
+        const pulse = 1.8 + Math.sin(Date.now() * 0.004) * 0.4;
+        this.enemyArrow.scale.setScalar(pulse);
+      }
+
+      return;
+    }
+
     if (this.mode === 'follow' && this.followTarget) {
       const target = this.followTarget.pos || this.followTarget;
 

@@ -576,3 +576,65 @@ html, body {
   border-radius: 2px;
   transition: width 0.1s linear;
 }
+
+/* Camera Toggle Button */
+.camera-toggle-btn {
+  background: rgba(255, 152, 0, 0.15);
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  color: #ff9800;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+}
+
+.camera-toggle-btn:active {
+  background: rgba(255, 152, 0, 0.3);
+}
+
+.camera-toggle-btn.active {
+  background: rgba(255, 152, 0, 0.35);
+  border-color: rgba(255, 152, 0, 0.6);
+}
+
+/* Move Confirm Buttons */
+#moveConfirm {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+#moveConfirm.hidden {
+  display: none;
+}
+
+.move-confirm-btn {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.move-confirm-btn.ok {
+  background: rgba(102, 187, 106, 0.4);
+  color: #66bb6a;
+  border: 1px solid rgba(102, 187, 106, 0.5);
+}
+
+.move-confirm-btn.ok:active {
+  background: rgba(102, 187, 106, 0.6);
+}
+
+.move-confirm-btn.cancel {
+  background: rgba(239, 83, 80, 0.3);
+  color: #ef5350;
+  border: 1px solid rgba(239, 83, 80, 0.4);
+}
+
+.move-confirm-btn.cancel:active {
+  background: rgba(239, 83, 80, 0.5);
+}

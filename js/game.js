@@ -42,6 +42,11 @@ export class Game {
     this.impactTimer = 0;
     this.napalmFlow = null;
     this.joystick = { dx: 0, dz: 0, active: false };
+    this.ghostTank = null;
+    this.rangeRing = null;
+    this.ghostPlaced = false;
+    this.driving = null;
+    this.cameraMode = 'drone';
     this.shotMarkers = [];
     this.tracerLabels = [];
     this.trees = [];
@@ -186,6 +191,38 @@ export class Game {
     sideViewBtn.addEventListener('touchstart', showSideView, { passive: false });
     sideViewBtn.addEventListener('click', showSideView);
 
+    const camToggle = document.getElementById('btnCameraToggle');
+    const toggleCamera = (e) => {
+      if (e) e.preventDefault();
+      if (this.state !== STATES.AIM) return;
+      if (this.cameraMode === 'drone') {
+        this.cameraMode = 'aiming';
+        camToggle.textContent = 'DRONE VIEW';
+        camToggle.classList.add('active');
+        const enemy = this.tanks[1 - this.currentPlayer];
+        this.cameraCtrl.startAiming(this.currentTank, enemy, this.scene);
+      } else {
+        this.cameraMode = 'drone';
+        camToggle.textContent = 'AIM VIEW';
+        camToggle.classList.remove('active');
+        const mid = this.tanks[0].position.clone().add(this.tanks[1].position).multiplyScalar(0.5);
+        this.cameraCtrl.stopAiming(mid);
+      }
+    };
+    camToggle.addEventListener('touchstart', toggleCamera, { passive: false });
+    camToggle.addEventListener('click', toggleCamera);
+
+    document.getElementById('btnMoveOk').addEventListener('click', () => this.confirmMove());
+    document.getElementById('btnMoveOk').addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      this.confirmMove();
+    }, { passive: false });
+    document.getElementById('btnMoveCancel').addEventListener('click', () => this.cancelMove());
+    document.getElementById('btnMoveCancel').addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      this.cancelMove();
+    }, { passive: false });
+
     this.setupJoystick();
   }
 
@@ -216,31 +253,28 @@ export class Game {
       knob.classList.add('active');
 
       const magnitude = clamped / maxDist;
-      if (dist > 0) {
-        this.joystick.dx = (offX / clamped) * magnitude;
-        this.joystick.dz = (offY / clamped) * magnitude;
-      } else {
-        this.joystick.dx = 0;
-        this.joystick.dz = 0;
+      if (magnitude > 0.1 && this.state === STATES.AIM && !this.driving) {
+        this.updateGhostPosition(offX / maxDist, offY / maxDist, magnitude);
       }
-      this.joystick.active = magnitude > 0.1;
     };
 
-    const resetKnob = () => {
+    const releaseKnob = () => {
       knob.style.transform = 'translate(-50%, -50%)';
       knob.classList.remove('active');
-      this.joystick.dx = 0;
-      this.joystick.dz = 0;
-      this.joystick.active = false;
       touchId = null;
+      if (this.ghostTank && this.ghostPlaced) {
+        document.getElementById('moveConfirm').classList.remove('hidden');
+      }
     };
 
     base.addEventListener('touchstart', (e) => {
       e.preventDefault();
       if (touchId !== null) return;
+      if (this.driving) return;
       const touch = e.changedTouches[0];
       touchId = touch.identifier;
       getCenter();
+      this.showRangeRing();
       updateKnob(touch.clientX, touch.clientY);
     }, { passive: false });
 
@@ -258,7 +292,7 @@ export class Game {
     window.addEventListener('touchend', (e) => {
       for (const touch of e.changedTouches) {
         if (touch.identifier === touchId) {
-          resetKnob();
+          releaseKnob();
           break;
         }
       }
@@ -267,7 +301,7 @@ export class Game {
     window.addEventListener('touchcancel', (e) => {
       for (const touch of e.changedTouches) {
         if (touch.identifier === touchId) {
-          resetKnob();
+          releaseKnob();
           break;
         }
       }
@@ -276,8 +310,10 @@ export class Game {
     // Mouse fallback
     let mouseDown = false;
     base.addEventListener('mousedown', (e) => {
+      if (this.driving) return;
       mouseDown = true;
       getCenter();
+      this.showRangeRing();
       updateKnob(e.clientX, e.clientY);
     });
     window.addEventListener('mousemove', (e) => {
@@ -287,9 +323,133 @@ export class Game {
     window.addEventListener('mouseup', () => {
       if (mouseDown) {
         mouseDown = false;
-        resetKnob();
+        releaseKnob();
       }
     });
+  }
+
+  getMoveRadius() {
+    const tank = this.currentTank;
+    return (tank.fuel / tank.maxFuel) * 25;
+  }
+
+  showRangeRing() {
+    this.hideRangeRing();
+    this.removeGhost();
+    const tank = this.currentTank;
+    if (tank.fuel <= 0) return;
+
+    const radius = this.getMoveRadius();
+    const segments = 64;
+    const points = [];
+    for (let i = 0; i <= segments; i++) {
+      const angle = (i / segments) * Math.PI * 2;
+      const x = tank.position.x + Math.cos(angle) * radius;
+      const z = tank.position.z + Math.sin(angle) * radius;
+      const y = this.terrain.getHeight(x, z) + 0.5;
+      points.push(new THREE.Vector3(x, y, z));
+    }
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineDashedMaterial({
+      color: 0x66bb6a, dashSize: 1.5, gapSize: 1, transparent: true, opacity: 0.7,
+    });
+    this.rangeRing = new THREE.Line(geo, mat);
+    this.rangeRing.computeLineDistances();
+    this.scene.add(this.rangeRing);
+  }
+
+  hideRangeRing() {
+    if (this.rangeRing) {
+      this.scene.remove(this.rangeRing);
+      this.rangeRing.geometry.dispose();
+      this.rangeRing.material.dispose();
+      this.rangeRing = null;
+    }
+  }
+
+  updateGhostPosition(dx, dz, magnitude) {
+    const tank = this.currentTank;
+    if (tank.fuel <= 0) return;
+    const radius = this.getMoveRadius();
+    const targetX = tank.position.x + dx * radius * magnitude;
+    const targetZ = tank.position.z + dz * radius * magnitude;
+
+    if (this.terrain.isOutOfBounds(targetX, targetZ)) return;
+
+    if (!this.ghostTank) {
+      const geo = new THREE.BoxGeometry(3.5, 1.2, 5);
+      const mat = new THREE.MeshLambertMaterial({
+        color: tank.colors.body, transparent: true, opacity: 0.4,
+      });
+      this.ghostTank = new THREE.Mesh(geo, mat);
+      this.ghostTank.position.y = 0.8;
+      const ghostGroup = new THREE.Group();
+      ghostGroup.add(this.ghostTank);
+      this.ghostTank._group = ghostGroup;
+      this.scene.add(ghostGroup);
+    }
+
+    const y = this.terrain.getHeight(targetX, targetZ);
+    this.ghostTank._group.position.set(targetX, y, targetZ);
+    const n = this.terrain.getNormal(targetX, targetZ);
+    const up = new THREE.Vector3(0, 1, 0);
+    const q = new THREE.Quaternion().setFromUnitVectors(up, n);
+    const identity = new THREE.Quaternion();
+    identity.slerp(q, 0.8);
+    this.ghostTank._group.quaternion.copy(identity);
+
+    this.ghostPlaced = true;
+    this.ghostTargetPos = new THREE.Vector3(targetX, y, targetZ);
+  }
+
+  removeGhost() {
+    if (this.ghostTank) {
+      this.scene.remove(this.ghostTank._group);
+      this.ghostTank.geometry.dispose();
+      this.ghostTank.material.dispose();
+      this.ghostTank = null;
+    }
+    this.ghostPlaced = false;
+    document.getElementById('moveConfirm').classList.add('hidden');
+  }
+
+  confirmMove() {
+    if (!this.ghostPlaced || !this.ghostTargetPos || this.driving) return;
+    const tank = this.currentTank;
+    const start = tank.position.clone();
+    const end = this.ghostTargetPos.clone();
+    const dist = start.distanceTo(end);
+    const duration = Math.max(0.5, dist / 15);
+
+    this.hideRangeRing();
+    this.removeGhost();
+
+    const fuelCost = Math.min(tank.fuel, (dist / this.getMoveRadius()) * tank.fuel);
+
+    this.driving = { start, end, elapsed: 0, duration, fuelCost };
+  }
+
+  cancelMove() {
+    this.hideRangeRing();
+    this.removeGhost();
+  }
+
+  updateDriving(dt) {
+    if (!this.driving) return;
+    const d = this.driving;
+    d.elapsed += dt;
+    const t = Math.min(d.elapsed / d.duration, 1);
+    const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+    const x = d.start.x + (d.end.x - d.start.x) * eased;
+    const z = d.start.z + (d.end.z - d.start.z) * eased;
+    this.currentTank.setPosition(x, z);
+
+    if (t >= 1) {
+      this.currentTank.fuel = Math.max(0, this.currentTank.fuel - d.fuelCost);
+      this.driving = null;
+      this.ui.updateFuel(this.currentTank);
+    }
   }
 
   startGame() {
@@ -312,6 +472,10 @@ export class Game {
     }
     this.shotMarkers = [];
     this.clearTracerLabels();
+    this.hideRangeRing();
+    this.removeGhost();
+    this.driving = null;
+    this.resetCameraMode();
     for (const tree of this.trees) {
       this.scene.remove(tree.group);
       for (const child of tree.group.children) {
@@ -373,10 +537,22 @@ export class Game {
     };
   }
 
+  resetCameraMode() {
+    this.cameraMode = 'drone';
+    const btn = document.getElementById('btnCameraToggle');
+    if (btn) {
+      btn.textContent = 'AIM VIEW';
+      btn.classList.remove('active');
+    }
+  }
+
   startTurn() {
     this.state = STATES.TURN_START;
     this.turn++;
     this.currentTank.resetFuel();
+    this.resetCameraMode();
+    this.cancelMove();
+    this.driving = null;
     this.ui.showTurnBanner(this.currentPlayer);
     this.ui.updateAll(this.currentTank, this.tanks, this.wind);
     const instant = this.firstTurn || false;
@@ -403,7 +579,12 @@ export class Game {
 
   fire() {
     if (this.state !== STATES.AIM) return;
+    if (this.driving) return;
     this.sideView.hide();
+    this.cancelMove();
+    if (this.cameraMode === 'aiming') {
+      this.cameraCtrl.hideEnemyArrow();
+    }
 
     const tank = this.currentTank;
     const weapon = tank.currentWeapon;
@@ -1066,6 +1247,7 @@ export class Game {
 
   handleInput(dt) {
     if (this.state !== STATES.AIM) return;
+    if (this.driving) return;
     const tank = this.currentTank;
     const aimSpeed = degToRad(25) * dt;
     const powerSpeed = 15 * dt;
@@ -1076,15 +1258,6 @@ export class Game {
     if (this.keys['KeyS']) tank.adjustElevation(-aimSpeed * 0.6);
     if (this.keys['KeyQ']) tank.adjustPower(-powerSpeed);
     if (this.keys['KeyE']) tank.adjustPower(powerSpeed);
-    if (this.keys['ArrowLeft']) tank.move(1);
-    if (this.keys['ArrowRight']) tank.move(-1);
-
-    if (this.joystick.active) {
-      const mag = Math.sqrt(this.joystick.dx ** 2 + this.joystick.dz ** 2);
-      if (mag > 0.1) {
-        tank.moveXZ(this.joystick.dx, this.joystick.dz, mag);
-      }
-    }
 
     this.ui.updateAim(tank);
     this.ui.updateFuel(tank);
@@ -1106,6 +1279,7 @@ export class Game {
 
     if (this.state === STATES.AIM || this.state === STATES.TURN_START) {
       this.handleInput(dt);
+      this.updateDriving(dt);
     }
 
     if (this.state === STATES.FIRING) {
